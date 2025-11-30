@@ -1,0 +1,5 @@
+{
+  "name": "Trust Protocol & Paw Validator",
+  "description": "A bidirectional validation system for establishing trust and vetting connections based on consent and public signals.",
+  "requestFramePermissions": []
+}
