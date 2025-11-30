@@ -20,6 +20,34 @@ import { DOMAIN_CRITERIA, RED_FLAGS, GREEN_FLAGS, INTERVIEW_QUESTIONS } from '..
 
 // --- Trust Protocol Logic ---
 
+export const simulateSignalVerification = async (signal: PublicSignal): Promise<PublicSignal> => {
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Mock verification logic
+    // In a real app, this would call external APIs (Twitter, GitHub, LinkedIn, DNS, etc.)
+    // Here, we fail if the content is too short (under 5 chars) or randomly 10% of the time
+    const isShort = signal.content.length < 5;
+    const randomFailure = Math.random() < 0.1;
+    
+    if (isShort || randomFailure) {
+        return {
+            ...signal,
+            verificationStatus: 'failed',
+            verificationNote: isShort ? 'Content too short to verify.' : 'Source endpoint timeout.',
+            confidence: 0.1 // Penalty for failing verification
+        };
+    }
+
+    // Success case
+    return {
+        ...signal,
+        verificationStatus: 'verified',
+        verificationNote: 'Independently confirmed via oracle.',
+        confidence: Math.min(signal.confidence + 0.3, 1.0) // Boost confidence
+    };
+};
+
 const calculateDomainScore = (domain: ValidationDomain, signals: PublicSignal[]): DomainResult => {
   // Map sources to domains
   const sourceMap: Record<string, ValidationDomain[]> = {
@@ -40,14 +68,20 @@ const calculateDomainScore = (domain: ValidationDomain, signals: PublicSignal[])
     return { score: 0.1, confidence: 0.1, signalsUsed: 0, concerns: ["No relevant signals provided"] };
   }
 
+  // Calculate Average Confidence
   const avgConfidence = relevantSignals.reduce((acc, s) => acc + s.confidence, 0) / relevantSignals.length;
-  // Score increases with number of verifiable signals, capped at 1.0
-  const quantityBonus = Math.min(relevantSignals.filter(s => s.verifiable).length * 0.15, 0.4);
+  
+  // Bonus calculation based on Verified status
+  const verifiedCount = relevantSignals.filter(s => s.verificationStatus === 'verified').length;
+  const quantityBonus = Math.min(verifiedCount * 0.20, 0.5); // Weighted higher for actually verified items
   
   const finalScore = Math.min(avgConfidence + quantityBonus, 1.0);
 
   const concerns = [];
   if (finalScore < 0.5) concerns.push("Insufficient high-quality evidence");
+  if (relevantSignals.some(s => s.verificationStatus === 'failed')) {
+      concerns.push("Some signals failed independent verification.");
+  }
   
   // Specific checks for Humanity
   if (domain === ValidationDomain.HUMANITY) {
@@ -80,7 +114,7 @@ export const generateCertificate = (request: ValidationRequest): TrustCertificat
   const finalScore = totalWeightedScore / totalWeight;
 
   let trustLevel = TrustLevel.CONSENTED;
-  const hasVouching = request.signals.some(s => s.source === 'vouching' && s.confidence > 0.8);
+  const hasVouching = request.signals.some(s => s.source === 'vouching' && s.verificationStatus === 'verified' && s.confidence > 0.8);
 
   if (finalScore >= 0.9 && hasVouching) trustLevel = TrustLevel.VOUCHED;
   else if (finalScore >= 0.85) trustLevel = TrustLevel.VERIFIED;

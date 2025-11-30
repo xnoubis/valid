@@ -34,12 +34,16 @@ export enum ConnectionType {
   EXPOSURE = "exposure"
 }
 
+export type VerificationStatus = 'unverified' | 'pending' | 'verified' | 'failed';
+
 export interface PublicSignal {
   id: string;
   source: string;
   signal_type: string;
   content: string;
-  verifiable: boolean;
+  verifiable: boolean; // The claim that it IS verifiable
+  verificationStatus: VerificationStatus; // The actual state of verification
+  verificationNote?: string;
   confidence: number;
   timestamp: string;
 }

@@ -12,9 +12,16 @@ import {
   InterviewSession,
   SignatureDimension
 } from './types';
-import { generateCertificate, analyzeConnection, startInterview, submitResponse, generateSignature as genSig } from './services/protocolService';
+import { 
+  generateCertificate, 
+  analyzeConnection, 
+  startInterview, 
+  submitResponse, 
+  generateSignature as genSig,
+  simulateSignalVerification
+} from './services/protocolService';
 import { SIGNAL_SOURCES } from './constants';
-import { Plus, Trash2, ArrowRight, Shield, Send, Sparkles, Hash, UserSearch } from 'lucide-react';
+import { Plus, Trash2, ArrowRight, Shield, Send, Sparkles, Hash, UserSearch, Loader2, CheckCircle, XCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'trust' | 'paw' | 'interviewed'>('trust');
@@ -27,6 +34,7 @@ const App: React.FC = () => {
   });
   const [certificate, setCertificate] = useState<TrustCertificate | null>(null);
   const [newSignal, setNewSignal] = useState<Partial<PublicSignal>>({ confidence: 0.5, verifiable: false });
+  const [verifyingSignalId, setVerifyingSignalId] = useState<string | null>(null);
 
   // Paw With Claws State
   const [proposal, setProposal] = useState<Partial<ConnectionProposal>>({
@@ -57,6 +65,7 @@ const App: React.FC = () => {
       signal_type: 'self-reported', 
       content: newSignal.content,
       verifiable: newSignal.verifiable || false,
+      verificationStatus: 'unverified',
       confidence: newSignal.confidence || 0.5,
       timestamp: new Date().toISOString()
     };
@@ -67,6 +76,25 @@ const App: React.FC = () => {
 
   const handleRemoveSignal = (id: string) => {
     setRequest(prev => ({ ...prev, signals: prev.signals?.filter(s => s.id !== id) }));
+  };
+
+  const handleVerifySignal = async (signalId: string) => {
+    if (!request.signals) return;
+    const signal = request.signals.find(s => s.id === signalId);
+    if (!signal) return;
+
+    setVerifyingSignalId(signalId);
+    
+    try {
+        const verifiedSignal = await simulateSignalVerification(signal);
+        
+        setRequest(prev => ({
+            ...prev,
+            signals: prev.signals?.map(s => s.id === signalId ? verifiedSignal : s)
+        }));
+    } finally {
+        setVerifyingSignalId(null);
+    }
   };
 
   const handleRequestValidation = () => {
@@ -255,19 +283,58 @@ const App: React.FC = () => {
                 </div>
 
                 {/* Signal List */}
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="space-y-2 max-h-80 overflow-y-auto">
                     {request.signals?.map(s => (
-                        <div key={s.id} className="flex items-start justify-between bg-slate-50 p-3 rounded border border-slate-200">
-                            <div>
-                                <div className="flex items-center space-x-2">
-                                    <span className="text-xs font-bold uppercase text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">{s.source}</span>
-                                    {s.verifiable && <Shield className="w-3 h-3 text-emerald-500" />}
+                        <div key={s.id} className="bg-slate-50 p-3 rounded border border-slate-200">
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <div className="flex items-center space-x-2 mb-1">
+                                        <span className="text-xs font-bold uppercase text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">{s.source}</span>
+                                        {/* Status Indicators */}
+                                        {s.verificationStatus === 'verified' && (
+                                            <span className="flex items-center text-xs font-medium text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-200">
+                                                <CheckCircle className="w-3 h-3 mr-1" /> Verified
+                                            </span>
+                                        )}
+                                        {s.verificationStatus === 'failed' && (
+                                            <span className="flex items-center text-xs font-medium text-red-700 bg-red-100 px-1.5 py-0.5 rounded border border-red-200">
+                                                <XCircle className="w-3 h-3 mr-1" /> Failed
+                                            </span>
+                                        )}
+                                        {s.verificationStatus === 'unverified' && s.verifiable && (
+                                            <span className="text-xs font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200">
+                                                Pending Verification
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-sm text-slate-800">{s.content}</p>
+                                    {s.verificationNote && (
+                                        <p className="text-xs text-slate-500 mt-1 italic">Note: {s.verificationNote}</p>
+                                    )}
                                 </div>
-                                <p className="text-sm text-slate-800 mt-1">{s.content}</p>
+                                <div className="flex flex-col space-y-2">
+                                    <button onClick={() => handleRemoveSignal(s.id)} className="text-slate-400 hover:text-red-500 self-end">
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                    
+                                    {/* Verify Button Logic */}
+                                    {s.verifiable && s.verificationStatus === 'unverified' && (
+                                        <button 
+                                            onClick={() => handleVerifySignal(s.id)}
+                                            disabled={verifyingSignalId === s.id}
+                                            className="text-xs bg-white border border-slate-300 text-slate-600 px-2 py-1 rounded hover:bg-slate-50 flex items-center shadow-sm"
+                                        >
+                                            {verifyingSignalId === s.id ? (
+                                                <>
+                                                    <Loader2 className="w-3 h-3 mr-1 animate-spin" /> Verifying...
+                                                </>
+                                            ) : (
+                                                "Verify Now"
+                                            )}
+                                        </button>
+                                    )}
+                                </div>
                             </div>
-                            <button onClick={() => handleRemoveSignal(s.id)} className="text-slate-400 hover:text-red-500">
-                                <Trash2 className="w-4 h-4" />
-                            </button>
                         </div>
                     ))}
                     {(!request.signals || request.signals.length === 0) && (
